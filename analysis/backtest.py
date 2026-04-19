@@ -8,14 +8,6 @@ Walk-forward 백테스트 엔진
 """
 import numpy as np
 import pandas as pd
-from datetime import timedelta
-
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from analysis.forecast import linear_forecast, ma_forecast, fetch_us_basket, compute_beta_rho, _us_adjustment
-from analysis.sector_map import get_basket
 
 
 def _mape(actual: float, predicted: float) -> float:
@@ -36,7 +28,7 @@ def run_backtest(
 
     Parameters
     ----------
-    series       : 전체 가격 시계열 (최소 history_days + forecast_days * n_tests 행 필요)
+    series       : 전체 가격 시계열
     sector       : KRX 업종명 (미국 연동용)
     history_days : 각 시점에서 사용할 과거 일수
     forecast_days: 예측 기간
@@ -45,22 +37,26 @@ def run_backtest(
     Returns
     -------
     {
-      "linear":   {"mape": float, "direction_acc": float, "mae": float, "tests": list},
-      "combined": {"mape": float, "direction_acc": float, "mae": float, "tests": list},
-      "ma20":     {"mape": float, "direction_acc": float, "mae": float, "tests": list},
-      "n_valid":  int,   # 실제로 검증된 윈도우 수
+      "linear":   {"mape", "direction_acc", "mae", "tests"},
+      "combined": {"mape", "direction_acc", "mae", "tests"},
+      "ma20":     {"mape", "direction_acc", "mae", "tests"},
+      "n_valid":  int,
     }
     """
+    # 지연 import — 모듈 레벨 cross-import 충돌 방지
+    from analysis.forecast import (
+        linear_forecast, ma_forecast,
+        fetch_us_basket, compute_beta_rho, _us_adjustment,
+    )
+    from analysis.sector_map import get_basket
+
     min_len = history_days + forecast_days + 1
     if len(series) < min_len:
         return {}
 
-    # 미국 바스켓 (전체 기간 한 번만 가져옴)
     basket_tickers = get_basket(sector) if sector else []
     us_df = fetch_us_basket(basket_tickers, days=len(series) + 30) if basket_tickers else pd.DataFrame()
 
-    # cutoff 시점 선택: 뒤에서부터 균등하게
-    # 마지막 cutoff = 전체 끝 - forecast_days (실제값 존재)
     max_idx = len(series) - forecast_days - 1
     min_idx = history_days
     if max_idx <= min_idx:
@@ -73,11 +69,10 @@ def run_backtest(
 
     for cut_i in cutoff_indices:
         train = series.iloc[:cut_i]
-        # 실제 forecast_days 영업일 후 가격 (가능하면 정확히, 아니면 가장 가까운)
-        future_slice = series.iloc[cut_i: cut_i + forecast_days * 2]  # 여유분
+        future_slice = series.iloc[cut_i: cut_i + forecast_days * 2]
         if future_slice.empty:
             continue
-        # forecast_days 영업일 후 실제값 (영업일 기준으로 최대한 맞춤)
+
         biz_future = future_slice.resample("B").last().dropna()
         if len(biz_future) < forecast_days:
             actual_price = float(biz_future.iloc[-1])
@@ -85,7 +80,7 @@ def run_backtest(
             actual_price = float(biz_future.iloc[forecast_days - 1])
 
         current_price = float(train.iloc[-1])
-        actual_direction = actual_price >= current_price  # True=상승
+        actual_direction = actual_price >= current_price
 
         # ── 선형 예측 ────────────────────────────────────────────────────
         lin = linear_forecast(train, forecast_days)
@@ -102,7 +97,6 @@ def run_backtest(
 
         # ── 복합 예측 (선형 + US 조정) ───────────────────────────────────
         if not us_df.empty:
-            # cutoff 이전 데이터만 사용
             us_cut = us_df[us_df.index <= train.index[-1]]
             br = compute_beta_rho(train, us_cut)
         else:
@@ -110,8 +104,10 @@ def run_backtest(
 
         adj = _us_adjustment(br["beta"], br["rho"], br["basket_return_1d"])
         decay = 0.5
-        cum_adj = adj * (1 - decay ** forecast_days) / (1 - decay + 1e-9)
-        cum_adj = float(np.clip(cum_adj, -0.20, 0.20))
+        cum_adj = float(np.clip(
+            adj * (1 - decay ** forecast_days) / (1 - decay + 1e-9),
+            -0.20, 0.20,
+        ))
         pred_combined = pred_linear * (1 + cum_adj)
 
         combined_tests.append({
@@ -150,9 +146,9 @@ def run_backtest(
         }
 
     return {
-        "linear":   _summarize(linear_tests),
-        "combined": _summarize(combined_tests),
-        "ma20":     _summarize(ma20_tests),
-        "n_valid":  len(linear_tests),
+        "linear":        _summarize(linear_tests),
+        "combined":      _summarize(combined_tests),
+        "ma20":          _summarize(ma20_tests),
+        "n_valid":       len(linear_tests),
         "forecast_days": forecast_days,
     }
