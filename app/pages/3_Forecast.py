@@ -108,6 +108,10 @@ us_info  = result["us"]
 atr      = result["atr"]
 name     = sym_to_name.get(symbol, symbol)
 
+# ── 분석 종목 확인 표시 ───────────────────────────────────────────────
+st.markdown(f"### 📌 분석 종목: **{name}** `{symbol}` — 업종: {sector or '미분류'}")
+st.markdown("---")
+
 # ── 요약 지표 ────────────────────────────────────────────────────────
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("현재가", f"{current:,.0f}원")
