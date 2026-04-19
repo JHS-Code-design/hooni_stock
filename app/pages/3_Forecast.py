@@ -281,7 +281,8 @@ st.subheader("🔬 모델 백테스트 (과거 검증)")
 st.caption(f"동일 모델로 과거 {history_days}일 데이터를 이용해 {forecast_days}일 후를 예측, 실제값과 비교")
 
 with st.spinner("백테스트 실행 중..."):
-    full_series = _load_price_series(symbol, 270)
+    bt_load_days = max(400, (history_days + forecast_days) * 4)
+    full_series = _load_price_series(symbol, bt_load_days)
     bt = run_backtest(
         full_series, sector=sector,
         history_days=history_days, forecast_days=forecast_days, n_tests=5,
