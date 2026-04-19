@@ -127,10 +127,17 @@ fig.add_trace(go.Scatter(
 ))
 
 # 현재 시점 구분선
-fig.add_vline(
-    x=series.index[-1].strftime("%Y-%m-%d"), line_dash="dot",
-    line_color="rgba(255,255,255,0.4)",
-    annotation_text="현재", annotation_position="top",
+fig.add_shape(
+    type="line",
+    x0=series.index[-1], x1=series.index[-1],
+    y0=0, y1=1, yref="paper",
+    line=dict(color="rgba(255,255,255,0.4)", dash="dot"),
+)
+fig.add_annotation(
+    x=series.index[-1], y=1, yref="paper",
+    text="현재", showarrow=False,
+    font=dict(color="rgba(255,255,255,0.6)"),
+    xanchor="left",
 )
 
 fig.update_layout(
