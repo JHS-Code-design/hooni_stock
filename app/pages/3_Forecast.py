@@ -6,7 +6,8 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 
-from analysis.forecast import run_forecast
+from analysis.forecast import run_forecast, _load_price_series
+from analysis.backtest import run_backtest
 from app.utils.data_loader import load_krx_listing
 from app.utils.watchlist import load_shared
 
@@ -235,5 +236,112 @@ with st.expander("예측 수치 상세"):
         "MA60 예측(원)": ma60.values.round(0).astype(int),
     })
     st.dataframe(tbl.set_index("날짜"), use_container_width=True)
+
+# ── 백테스트 ─────────────────────────────────────────────────────────
+st.markdown("---")
+st.subheader("🔬 모델 백테스트 (과거 검증)")
+st.caption(f"동일 모델로 과거 {history_days}일 데이터를 이용해 {forecast_days}일 후를 예측, 실제값과 비교")
+
+with st.spinner("백테스트 실행 중..."):
+    full_series = _load_price_series(symbol, 270)
+    bt = run_backtest(
+        full_series, sector=sector,
+        history_days=history_days, forecast_days=forecast_days, n_tests=5,
+    )
+
+if not bt:
+    st.warning("데이터가 부족하여 백테스트를 수행할 수 없습니다. (최소 120일 이상 필요)")
+else:
+    # 요약 테이블
+    summary_df = pd.DataFrame({
+        "모델":      ["선형 회귀", "복합(US조정)", "MA20"],
+        "MAPE(%)":   [bt["linear"]["mape"], bt["combined"]["mape"], bt["ma20"]["mape"]],
+        "방향 정확도(%)": [bt["linear"]["direction_acc"], bt["combined"]["direction_acc"], bt["ma20"]["direction_acc"]],
+        "MAE(원)":   [f"{bt['linear']['mae']:,}", f"{bt['combined']['mae']:,}", f"{bt['ma20']['mae']:,}"],
+    })
+
+    def _color_mape(val):
+        try:
+            v = float(val)
+            if v < 5:   return "color: #66bb6a"
+            if v < 10:  return "color: #ffb74d"
+            return "color: #ef5350"
+        except Exception:
+            return ""
+
+    def _color_dir(val):
+        try:
+            v = float(val)
+            if v >= 65: return "color: #66bb6a"
+            if v >= 55: return "color: #ffb74d"
+            return "color: #ef5350"
+        except Exception:
+            return ""
+
+    st.dataframe(
+        summary_df.style
+            .map(_color_mape, subset=["MAPE(%)"])
+            .map(_color_dir, subset=["방향 정확도(%)"]),
+        use_container_width=True, hide_index=True,
+    )
+
+    # 개별 윈도우 차트 (예측 vs 실제)
+    with st.expander("백테스트 상세 — 윈도우별 예측/실제 비교"):
+        lin_tests = bt["linear"]["tests"]
+        comb_tests = bt["combined"]["tests"]
+
+        fig_bt = go.Figure()
+        dates = [t["cutoff_date"] for t in lin_tests]
+
+        fig_bt.add_trace(go.Scatter(
+            x=dates, y=[t["actual"] for t in lin_tests],
+            name="실제 주가", mode="lines+markers",
+            line=dict(color="#90caf9", width=2),
+            marker=dict(size=8),
+        ))
+        fig_bt.add_trace(go.Scatter(
+            x=dates, y=[t["predicted"] for t in lin_tests],
+            name="선형 예측", mode="lines+markers",
+            line=dict(color="#ff7043", width=2, dash="dash"),
+            marker=dict(size=8),
+        ))
+        fig_bt.add_trace(go.Scatter(
+            x=dates, y=[t["predicted"] for t in comb_tests],
+            name="복합 예측", mode="lines+markers",
+            line=dict(color="#ce93d8", width=2, dash="dot"),
+            marker=dict(size=8),
+        ))
+
+        fig_bt.update_layout(
+            title=f"백테스트: cutoff 시점 기준 {forecast_days}일 후 예측 vs 실제",
+            yaxis_title="주가 (원)",
+            xaxis_title="예측 기준 날짜",
+            paper_bgcolor="#0e1117",
+            plot_bgcolor="#0e1117",
+            font=dict(color="#fafafa"),
+            legend=dict(bgcolor="#262730"),
+            height=380,
+        )
+        fig_bt.update_xaxes(showgrid=True, gridcolor="#2a2a2a")
+        fig_bt.update_yaxes(showgrid=True, gridcolor="#2a2a2a", tickformat=",d")
+        st.plotly_chart(fig_bt, use_container_width=True)
+
+        # 수치 테이블
+        detail_rows = []
+        for t in lin_tests:
+            detail_rows.append({
+                "기준일": t["cutoff_date"],
+                "실제가(원)": f"{t['actual']:,}",
+                "선형 예측(원)": f"{t['predicted']:,}",
+                "선형 오차": f"{t['mape']:.1f}%",
+                "방향": "✅" if t["direction_correct"] else "❌",
+            })
+        st.dataframe(pd.DataFrame(detail_rows).set_index("기준일"), use_container_width=True)
+
+    st.caption(
+        f"검증 윈도우 {bt['n_valid']}개 | "
+        f"MAPE: 녹색 <5%, 주황 5~10%, 빨강 >10% | "
+        f"방향 정확도: 녹색 ≥65%, 주황 55~64%, 빨강 <55%"
+    )
 
 st.warning("⚠️ 이 예측은 통계 모델 기반이며 실제 시장 상황을 보장하지 않습니다. 투자 판단의 참고 자료로만 활용하세요.")
