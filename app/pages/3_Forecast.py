@@ -44,7 +44,8 @@ with col3:
 
 token = raw.strip()
 symbol = name_to_sym.get(token) or (token if token in sym_to_name else token)
-sector = sym_to_sector.get(symbol, "")
+_s = sym_to_sector.get(symbol, "")
+sector = _s if isinstance(_s, str) and _s else ""  # NaN 방어
 
 run_btn = st.button("예측 시작", type="primary")
 

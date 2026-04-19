@@ -196,17 +196,22 @@ def run_forecast(
     target = float(linear["forecast"].iloc[-1])
     change_pct = (target - current) / current * 100
 
-    # 미국 섹터 연동
-    basket_tickers = get_basket(sector) if sector else []
-    us_df = fetch_us_basket(basket_tickers, days=max(history_days, 60)) if basket_tickers else pd.DataFrame()
-    br = compute_beta_rho(series, us_df)
-
-    adj = _us_adjustment(br["beta"], br["rho"], br["basket_return_1d"])
-    # 기본 선형 예측에 미국 섹터 조정 누적 (forecast_days일 적용)
-    # 단기 adj를 연장 기간에 비례해 반영 (감쇠 계수 적용)
-    decay = 0.5  # 장기일수록 미국 영향 희석
-    cumulative_adj = adj * (1 - decay ** forecast_days) / (1 - decay + 1e-9)
-    cumulative_adj = np.clip(cumulative_adj, -0.20, 0.20)
+    # 미국 섹터 연동 (실패해도 선형 예측으로 fallback)
+    try:
+        sector_str = str(sector).strip() if sector and str(sector) != "nan" else ""
+        basket_tickers = get_basket(sector_str) if sector_str else []
+        us_df = fetch_us_basket(basket_tickers, days=max(history_days, 60)) if basket_tickers else pd.DataFrame()
+        br = compute_beta_rho(series, us_df)
+        adj = _us_adjustment(br["beta"], br["rho"], br["basket_return_1d"])
+        decay = 0.5
+        cumulative_adj = float(np.clip(
+            adj * (1 - decay ** forecast_days) / (1 - decay + 1e-9),
+            -0.20, 0.20,
+        ))
+    except Exception:
+        basket_tickers = []
+        br = {"beta": 0.0, "rho": 0.0, "basket_return_1d": 0.0}
+        cumulative_adj = 0.0
 
     target_combined = target * (1 + cumulative_adj)
     change_pct_combined = (target_combined - current) / current * 100
