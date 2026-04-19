@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '0 22 * * 1-5'   # UTC 22:00 = KST 07:00 (월~금)
   workflow_dispatch:           # 수동 실행
+    inputs:
+      force:
+        description: '비영업일에도 강제 수집 (true/false)'
+        required: false
+        default: 'false'
 
 jobs:
   collect:
@@ -30,6 +35,7 @@ jobs:
         env:
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
           WATCH_SYMBOLS: ${{ secrets.WATCH_SYMBOLS }}
+          FORCE_COLLECT: ${{ github.event.inputs.force || 'false' }}
         run: python scripts/run_all.py
 
       - name: Purge old data (>180 days)

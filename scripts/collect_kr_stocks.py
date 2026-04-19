@@ -124,14 +124,37 @@ def is_korean_market_open(date: datetime) -> bool:
         return date.weekday() < 5
 
 
+def last_trading_day() -> str:
+    """가장 최근 거래일 반환 (오늘 포함)"""
+    try:
+        import exchange_calendars as ecals
+        cal = ecals.get_calendar("XKRX")
+        today = datetime.now()
+        for i in range(7):
+            d = today - timedelta(days=i)
+            if cal.is_session(d.strftime("%Y-%m-%d")):
+                return d.strftime("%Y-%m-%d")
+    except Exception:
+        pass
+    # fallback: 최근 평일
+    d = datetime.now()
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d.strftime("%Y-%m-%d")
+
+
 if __name__ == "__main__":
+    import os as _os
+    force = _os.environ.get("FORCE_COLLECT", "").lower() in ("1", "true", "yes")
     today = datetime.now()
 
-    if not is_korean_market_open(today):
-        log.info(f"{today.date()} 는 한국 장 비영업일 — 수집 건너뜀")
+    if not force and not is_korean_market_open(today):
+        log.info(f"{today.date()} 는 한국 장 비영업일 — 수집 건너뜀 (강제 실행: FORCE_COLLECT=1)")
         exit(0)
 
-    today_str = today.strftime("%Y-%m-%d")
+    today_str = last_trading_day() if not is_korean_market_open(today) else today.strftime("%Y-%m-%d")
+    if force:
+        log.info(f"강제 수집 모드 — 기준일: {today_str}")
 
     listing = fetch_krx_listing()
 
