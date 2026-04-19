@@ -15,8 +15,9 @@ from datetime import timedelta
 # ── 데이터 로딩 ──────────────────────────────────────────────────────────
 
 def _load_price_series(symbol: str, days: int = 180) -> pd.Series:
-    """로컬 parquet → 없으면 yfinance fallback"""
+    """로컬 parquet → 부족하면 yfinance fallback"""
     from pathlib import Path
+    from datetime import datetime, timedelta
     import yfinance as yf
 
     data_dir = Path(__file__).parent.parent / "data" / "prices"
@@ -27,14 +28,17 @@ def _load_price_series(symbol: str, days: int = 180) -> pd.Series:
             if p.exists():
                 df = pd.read_parquet(p)
                 col = "Close" if "Close" in df.columns else df.columns[-1]
-                return df[col].dropna().tail(days)
+                local = df[col].dropna()
+                if len(local) >= days:
+                    return local.tail(days)
+                # 로컬 데이터 부족 → yfinance로 보충
 
-    ticker = yf.Ticker(f"{symbol}.KS")
-    hist = ticker.history(period=f"{days}d")
-    if hist.empty:
-        ticker = yf.Ticker(f"{symbol}.KQ")
-        hist = ticker.history(period=f"{days}d")
-    return hist["Close"].dropna() if not hist.empty else pd.Series(dtype=float)
+    start = (datetime.today() - timedelta(days=days + 30)).strftime("%Y-%m-%d")
+    for suffix in (".KS", ".KQ"):
+        hist = yf.Ticker(f"{symbol}{suffix}").history(start=start)
+        if not hist.empty:
+            return hist["Close"].dropna().tail(days)
+    return pd.Series(dtype=float)
 
 
 def fetch_us_basket(tickers: list[str], days: int = 120) -> pd.DataFrame:
