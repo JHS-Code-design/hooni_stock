@@ -281,15 +281,28 @@ st.subheader("🔬 모델 백테스트 (과거 검증)")
 st.caption(f"동일 모델로 과거 {history_days}일 데이터를 이용해 {forecast_days}일 후를 예측, 실제값과 비교")
 
 with st.spinner("백테스트 실행 중..."):
+    import importlib, analysis.forecast as _fm
+    importlib.reload(_fm)
+    _load_ps2 = _fm._load_price_series
+
     bt_load_days = max(400, (history_days + forecast_days) * 4)
-    full_series = _load_price_series(symbol, bt_load_days)
+    full_series = _load_ps2(symbol, bt_load_days)
+
+    # 여전히 부족하면 yfinance 직접 호출
+    if len(full_series) < history_days + forecast_days + 1:
+        from datetime import datetime, timedelta
+        import yfinance as yf
+        start = (datetime.today() - timedelta(days=bt_load_days + 60)).strftime("%Y-%m-%d")
+        for sfx in (".KS", ".KQ"):
+            _h = yf.Ticker(f"{symbol}{sfx}").history(start=start)
+            if not _h.empty:
+                full_series = _h["Close"].dropna()
+                break
+
     bt = run_backtest(
         full_series, sector=sector,
         history_days=history_days, forecast_days=forecast_days, n_tests=5,
     )
-
-# DEBUG
-st.caption(f"[DEBUG] bt_load_days={bt_load_days}, full_series len={len(full_series)}, min_len_needed={history_days+forecast_days+1}")
 
 if not bt:
     st.warning("데이터가 부족하여 백테스트를 수행할 수 없습니다. (최소 120일 이상 필요)")
