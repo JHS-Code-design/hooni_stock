@@ -60,7 +60,7 @@ with col2:
     history_days = st.selectbox("과거 데이터 기간", [30, 60, 90, 180], index=2,
                                 format_func=lambda x: f"{x}일")
 with col3:
-    forecast_days = st.selectbox("예측 기간", [7, 14, 30, 60, 90], index=2,
+    forecast_days = st.selectbox("예측 기간", [7, 14, 30, 60, 90], index=0,
                                  format_func=lambda x: f"{x}일")
 
 token = raw.strip()
