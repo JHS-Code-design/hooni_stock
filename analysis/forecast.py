@@ -1,13 +1,16 @@
 """
-주가 예측 엔진
+주가 예측 엔진 (복합)
 - 선형 회귀 추세 + 이동평균 기반 예측
-- scipy.stats.linregress 사용 (외부 ML 라이브러리 불필요)
+- 미국 섹터 ETF/대표주 연동 (베타·상관계수)
+- ATR14 신뢰 구간
 """
 import numpy as np
 import pandas as pd
 from scipy import stats
 from datetime import timedelta
 
+
+# ── 데이터 로딩 ──────────────────────────────────────────────────────────
 
 def _load_price_series(symbol: str, days: int = 180) -> pd.Series:
     """로컬 parquet → 없으면 yfinance fallback"""
@@ -24,7 +27,6 @@ def _load_price_series(symbol: str, days: int = 180) -> pd.Series:
                 col = "Close" if "Close" in df.columns else df.columns[-1]
                 return df[col].dropna().tail(days)
 
-    # fallback: yfinance
     ticker = yf.Ticker(f"{symbol}.KS")
     hist = ticker.history(period=f"{days}d")
     if hist.empty:
@@ -33,24 +35,85 @@ def _load_price_series(symbol: str, days: int = 180) -> pd.Series:
     return hist["Close"].dropna() if not hist.empty else pd.Series(dtype=float)
 
 
+def fetch_us_basket(tickers: list[str], days: int = 120) -> pd.DataFrame:
+    """미국 ETF/주식 종가 DataFrame 반환 (열=ticker)"""
+    import yfinance as yf
+
+    if not tickers:
+        return pd.DataFrame()
+    try:
+        raw = yf.download(tickers, period=f"{days}d", progress=False, threads=False)
+        if raw.empty:
+            return pd.DataFrame()
+        if isinstance(raw.columns, pd.MultiIndex):
+            close = raw["Close"]
+        else:
+            close = raw[["Close"]] if "Close" in raw.columns else raw
+        close = close.dropna(how="all")
+        return close
+    except Exception:
+        return pd.DataFrame()
+
+
+# ── 기술적 지표 ──────────────────────────────────────────────────────────
+
+def compute_atr(series: pd.Series, window: int = 14) -> float:
+    """ATR14 근사 (Close 전용 — High/Low 없을 때)"""
+    diff = series.diff().abs()
+    return float(diff.rolling(window, min_periods=1).mean().iloc[-1])
+
+
+def compute_beta_rho(
+    kr_series: pd.Series, us_df: pd.DataFrame
+) -> dict:
+    """
+    미국 바스켓 대비 한국 종목의 베타·상관계수 계산.
+    미국이 하루 먼저 마감 → us_returns.shift(1) 적용.
+    """
+    if us_df.empty:
+        return {"beta": 0.0, "rho": 0.0, "basket_return_1d": 0.0}
+
+    kr_ret = kr_series.pct_change().dropna()
+
+    basket_avg = us_df.pct_change().shift(1).mean(axis=1).dropna()
+
+    common = kr_ret.index.intersection(basket_avg.index)
+    if len(common) < 10:
+        return {"beta": 0.0, "rho": 0.0, "basket_return_1d": 0.0}
+
+    x = basket_avg.loc[common].values
+    y = kr_ret.loc[common].values
+
+    slope, intercept, r, p, se = stats.linregress(x, y)
+
+    # 최근 1영업일 미국 바스켓 수익률 (오늘 한국 장에 반영될 값)
+    basket_return_1d = float(basket_avg.iloc[-1]) if not basket_avg.empty else 0.0
+
+    return {
+        "beta": float(slope),
+        "rho": float(r),
+        "basket_return_1d": basket_return_1d,
+    }
+
+
+# ── 예측 핵심 ────────────────────────────────────────────────────────────
+
 def linear_forecast(series: pd.Series, forecast_days: int) -> dict:
-    """선형 회귀 추세선 + 예측"""
+    """선형 회귀 추세선 + ATR 기반 신뢰 구간"""
     x = np.arange(len(series))
     y = series.values.astype(float)
 
     slope, intercept, r, p, se = stats.linregress(x, y)
 
-    # 신뢰 구간 (residual 표준편차 기반)
     y_pred_in = slope * x + intercept
     residuals = y - y_pred_in
     std_res = np.std(residuals)
 
-    # 미래 x
     x_future = np.arange(len(series), len(series) + forecast_days)
     future_dates = pd.date_range(
         start=series.index[-1] + timedelta(days=1),
         periods=forecast_days,
-        freq="B",  # 영업일
+        freq="B",
     )
 
     y_future = slope * x_future + intercept
@@ -70,7 +133,7 @@ def linear_forecast(series: pd.Series, forecast_days: int) -> dict:
 
 
 def ma_forecast(series: pd.Series, forecast_days: int, window: int = 20) -> pd.Series:
-    """이동평균 기반 예측 (마지막 MA값을 수평 연장)"""
+    """이동평균 수평 연장"""
     ma = series.rolling(window, min_periods=1).mean()
     last_ma = float(ma.iloc[-1])
     future_dates = pd.date_range(
@@ -81,20 +144,46 @@ def ma_forecast(series: pd.Series, forecast_days: int, window: int = 20) -> pd.S
     return pd.Series(last_ma, index=future_dates)
 
 
-def run_forecast(symbol: str, history_days: int = 90, forecast_days: int = 30) -> dict:
+# ── 복합 조정 ────────────────────────────────────────────────────────────
+
+def _us_adjustment(beta: float, rho: float, basket_return_1d: float) -> float:
     """
+    미국 섹터 연동 조정값 (일별 수익률 기준).
+    rho 신뢰도 가중, 최대 ±5% 제한.
+    """
+    raw = beta * basket_return_1d * abs(rho)
+    return float(np.clip(raw, -0.05, 0.05))
+
+
+# ── 공개 API ─────────────────────────────────────────────────────────────
+
+def run_forecast(
+    symbol: str,
+    history_days: int = 90,
+    forecast_days: int = 30,
+    sector: str = "",
+) -> dict:
+    """
+    복합 예측 실행.
+
     Returns:
         {
           "symbol": str,
-          "series": pd.Series,        # 실제 가격
-          "linear": dict,             # 선형 회귀 결과
-          "ma20": pd.Series,          # MA20 예측
-          "ma60": pd.Series,          # MA60 예측
+          "series": pd.Series,
+          "linear": dict,
+          "ma20": pd.Series,
+          "ma60": pd.Series,
           "current_price": float,
-          "target_price": float,      # 선형 회귀 기준 예측 종가
-          "change_pct": float,        # 현재→예측 등락률
+          "target_price": float,       # 선형 기준
+          "target_combined": float,    # 복합 조정 후
+          "change_pct": float,
+          "change_pct_combined": float,
+          "us": dict,                  # beta, rho, basket_return_1d, tickers
+          "atr": float,
         }
     """
+    from .sector_map import get_basket
+
     series = _load_price_series(symbol, history_days)
     if series.empty or len(series) < 10:
         return {}
@@ -107,6 +196,23 @@ def run_forecast(symbol: str, history_days: int = 90, forecast_days: int = 30) -
     target = float(linear["forecast"].iloc[-1])
     change_pct = (target - current) / current * 100
 
+    # 미국 섹터 연동
+    basket_tickers = get_basket(sector) if sector else []
+    us_df = fetch_us_basket(basket_tickers, days=max(history_days, 60)) if basket_tickers else pd.DataFrame()
+    br = compute_beta_rho(series, us_df)
+
+    adj = _us_adjustment(br["beta"], br["rho"], br["basket_return_1d"])
+    # 기본 선형 예측에 미국 섹터 조정 누적 (forecast_days일 적용)
+    # 단기 adj를 연장 기간에 비례해 반영 (감쇠 계수 적용)
+    decay = 0.5  # 장기일수록 미국 영향 희석
+    cumulative_adj = adj * (1 - decay ** forecast_days) / (1 - decay + 1e-9)
+    cumulative_adj = np.clip(cumulative_adj, -0.20, 0.20)
+
+    target_combined = target * (1 + cumulative_adj)
+    change_pct_combined = (target_combined - current) / current * 100
+
+    atr = compute_atr(series)
+
     return {
         "symbol": symbol,
         "series": series,
@@ -115,5 +221,13 @@ def run_forecast(symbol: str, history_days: int = 90, forecast_days: int = 30) -
         "ma60": ma60,
         "current_price": current,
         "target_price": target,
+        "target_combined": float(target_combined),
         "change_pct": change_pct,
+        "change_pct_combined": float(change_pct_combined),
+        "us": {
+            **br,
+            "tickers": basket_tickers,
+            "adj_pct": float(adj * 100),
+        },
+        "atr": atr,
     }
