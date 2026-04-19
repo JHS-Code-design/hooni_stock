@@ -311,7 +311,6 @@ with st.spinner("백테스트 실행 중..."):
         )
     except Exception as _bt_err:
         bt = {}
-        st.caption(f"[DEBUG-BT] {type(_bt_err).__name__}: {_bt_err}")
 
 if not bt:
     st.warning("데이터가 부족하여 백테스트를 수행할 수 없습니다. (최소 120일 이상 필요)")
@@ -319,8 +318,8 @@ else:
     # 요약 테이블
     summary_df = pd.DataFrame({
         "모델":      ["선형 회귀", "복합(US조정)", "MA20"],
-        "MAPE(%)":   [bt["linear"]["mape"], bt["combined"]["mape"], bt["ma20"]["mape"]],
-        "방향 정확도(%)": [bt["linear"]["direction_acc"], bt["combined"]["direction_acc"], bt["ma20"]["direction_acc"]],
+        "MAPE(%)":   [f"{bt['linear']['mape']:.2f}", f"{bt['combined']['mape']:.2f}", f"{bt['ma20']['mape']:.2f}"],
+        "방향 정확도(%)": [f"{bt['linear']['direction_acc']:.1f}", f"{bt['combined']['direction_acc']:.1f}", f"{bt['ma20']['direction_acc']:.1f}"],
         "MAE(원)":   [f"{bt['linear']['mae']:,}", f"{bt['combined']['mae']:,}", f"{bt['ma20']['mae']:,}"],
     })
 
