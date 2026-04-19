@@ -65,7 +65,7 @@ with st.sidebar:
 
         if my_list:
             if st.button("📋 개인 목록으로 분석", use_container_width=True, key="use_my"):
-                st.session_state["prefill"] = ", ".join(my_list)
+                st.session_state["watch_input"] = ", ".join(my_list)
                 st.rerun()
 
     # ── 공유 탭 ──────────────────────────────────────────────────────
@@ -112,18 +112,19 @@ with st.sidebar:
 
         if shared_list:
             if st.button("📋 공유 목록으로 분석", use_container_width=True, key="use_shared"):
-                st.session_state["prefill"] = ", ".join(shared_list)
+                st.session_state["watch_input"] = ", ".join(shared_list)
                 st.rerun()
 
 # ── 종목 입력 ──────────────────────────────────────────────────────────
 _shared = load_shared()
-default_input = st.session_state.pop("prefill", ", ".join(_shared) if _shared else "005930, 000660")
+if "watch_input" not in st.session_state:
+    st.session_state["watch_input"] = ", ".join(_shared) if _shared else "005930, 000660"
 
 col1, col2 = st.columns([3, 1])
 with col1:
     raw_input = st.text_input(
         "관심 종목 입력 (종목코드 또는 종목명, 쉼표 구분)",
-        value=default_input,
+        key="watch_input",
         placeholder="005930, 삼성전자, SK하이닉스",
     )
 with col2:
