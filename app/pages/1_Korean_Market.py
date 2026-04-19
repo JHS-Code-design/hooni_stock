@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from analysis.correlation import find_related
-from app.utils.data_loader import load_krx_listing, load_latest_prices_df
+from app.utils.data_loader import load_krx_listing, load_latest_prices_df, fetch_current_prices
 from app.utils.chart_builder import (
     build_network_graph, build_heatmap, build_treemap, build_comparison_chart
 )
@@ -165,6 +165,47 @@ if not nodes:
     st.stop()
 
 st.success(f"종목 {len(nodes)}개, 연관 관계 {len(edges)}개 탐색 완료")
+
+# ── 현재가 테이블 ─────────────────────────────────────────────────────
+with st.spinner("현재가 조회 중..."):
+    all_node_syms = [n["id"] for n in nodes]
+    price_df = fetch_current_prices(all_node_syms)
+
+if not price_df.empty:
+    rows = []
+    for n in nodes:
+        sid = n["id"]
+        row = {
+            "종목코드": sid,
+            "종목명": sym_to_name.get(sid, sid),
+            "업종": n.get("sector", ""),
+            "관심": "★" if n["is_watch"] else "",
+        }
+        if sid in price_df.index:
+            row["현재가(원)"] = f"{price_df.loc[sid, '현재가']:,}"
+            pct = price_df.loc[sid, "등락률(%)"]
+            row["등락률"] = f"{'+' if pct >= 0 else ''}{pct:.2f}%"
+        else:
+            row["현재가(원)"] = "-"
+            row["등락률"] = "-"
+        rows.append(row)
+
+    tbl = pd.DataFrame(rows).set_index("종목코드")
+
+    def color_change(val):
+        if val.startswith("+"):
+            return "color: #ef5350"
+        elif val.startswith("-"):
+            return "color: #42a5f5"
+        return ""
+
+    st.dataframe(
+        tbl.style.applymap(color_change, subset=["등락률"]),
+        use_container_width=True,
+        height=min(400, 40 + len(tbl) * 35),
+    )
+else:
+    st.caption("현재가 조회 실패 (장 마감 후 또는 네트워크 오류)")
 
 # ── 탭 구성 ───────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4 = st.tabs(["🔗 네트워크", "🌡️ 히트맵", "🗺️ 트리맵", "📊 비교 차트"])
