@@ -32,26 +32,30 @@ def _sym_label(s: str) -> str:
     n = sym_to_name.get(s, "")
     return f"{n}({s})" if n else s
 
-# 관심 종목 선택 드롭다운 (있을 때만 표시)
+# 관심 종목 드롭다운 → 선택 시 symbol을 직접 결정
 if watchlist:
     watch_options = ["직접 입력"] + [_sym_label(s) for s in watchlist]
     selected = st.selectbox("⭐ 관심 종목에서 선택", watch_options, index=0)
     if selected != "직접 입력":
-        # 괄호 안 코드 추출
-        _pre_fill = selected[selected.rfind("(") + 1:-1] if "(" in selected else selected
+        # 드롭다운 선택 → 코드 직접 추출, 텍스트 입력 우회
+        _sel_sym = watchlist[watch_options.index(selected) - 1]
     else:
-        _pre_fill = ""
+        _sel_sym = ""
 else:
-    _pre_fill = ""
+    selected = "직접 입력"
+    _sel_sym = ""
 
 col1, col2, col3 = st.columns([3, 2, 2])
 with col1:
-    default_val = _sym_label(_pre_fill) if _pre_fill else (_sym_label(watchlist[0]) if watchlist else "064350")
-    raw = st.text_input(
-        "종목코드 또는 종목명",
-        value=default_val,
-        placeholder="064350 또는 현대로템(064350)",
-    )
+    if _sel_sym:
+        # 드롭다운에서 종목 선택됨 → 텍스트 입력 표시만 (비활성)
+        st.text_input("종목코드 또는 종목명", value=_sym_label(_sel_sym), disabled=True)
+        raw = _sel_sym
+    else:
+        raw = st.text_input(
+            "종목코드 또는 종목명",
+            placeholder="005930 또는 삼성전자",
+        )
 with col2:
     history_days = st.selectbox("과거 데이터 기간", [30, 60, 90, 180], index=2,
                                 format_func=lambda x: f"{x}일")
