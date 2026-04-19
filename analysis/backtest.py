@@ -57,6 +57,14 @@ def run_backtest(
     basket_tickers = get_basket(sector) if sector else []
     us_df = fetch_us_basket(basket_tickers, days=len(series) + 30) if basket_tickers else pd.DataFrame()
 
+    # timezone 정규화 (us_df: UTC-aware, series: tz-naive 비교 오류 방지)
+    if not us_df.empty and us_df.index.tz is not None:
+        us_df = us_df.copy()
+        us_df.index = us_df.index.tz_localize(None)
+    if series.index.tz is not None:
+        series = series.copy()
+        series.index = series.index.tz_localize(None)
+
     max_idx = len(series) - forecast_days - 1
     min_idx = history_days
     if max_idx <= min_idx:
