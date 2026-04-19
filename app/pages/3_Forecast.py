@@ -75,7 +75,8 @@ c2.metric(
     f"{change_pct:+.2f}%",
     delta_color="normal",
 )
-c3.metric("추세", linear["trend"], f"기울기 {linear['slope']:+.1f}원/일")
+trend_label = "상승" if change_pct >= 0 else "하락"
+c3.metric("추세", trend_label, f"기울기 {linear['slope']:+.1f}원/일")
 c4.metric("추세 신뢰도 (R²)", f"{linear['r_squared']:.2f}")
 
 # ── 차트 ─────────────────────────────────────────────────────────────
