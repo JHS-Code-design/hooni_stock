@@ -200,7 +200,7 @@ if not price_df.empty:
         return ""
 
     st.dataframe(
-        tbl.style.applymap(color_change, subset=["등락률"]),
+        tbl.style.map(color_change, subset=["등락률"]),
         use_container_width=True,
         height=min(400, 40 + len(tbl) * 35),
     )
