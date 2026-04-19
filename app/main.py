@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import streamlit as st
 from app.utils.data_loader import get_latest_data_date
 
