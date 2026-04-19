@@ -55,9 +55,15 @@ if not run_btn:
     st.stop()
 
 # ── 예측 실행 ────────────────────────────────────────────────────────
-with st.spinner("데이터 로딩 및 예측 중..."):
-    result = run_forecast(symbol, history_days=history_days,
-                          forecast_days=forecast_days, sector=sector)
+try:
+    with st.spinner("데이터 로딩 및 예측 중..."):
+        result = run_forecast(symbol, history_days=history_days,
+                              forecast_days=forecast_days, sector=sector)
+except Exception as _e:
+    import traceback as _tb
+    st.error(f"[DEBUG] {type(_e).__name__}: {_e}")
+    st.code(_tb.format_exc())
+    st.stop()
 
 if not result:
     st.error("데이터를 불러올 수 없습니다. 종목코드를 확인하세요.")
