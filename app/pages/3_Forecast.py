@@ -70,8 +70,8 @@ sector = _s if isinstance(_s, str) and _s else ""  # NaN 방어
 run_btn = st.button("예측 시작", type="primary")
 
 if not run_btn:
-    if shared:
-        st.info(f"종목을 선택하고 '예측 시작'을 누르세요. 관심 종목: {', '.join(sym_to_name.get(s, s) for s in shared)}")
+    if watchlist:
+        st.info(f"종목을 선택하고 '예측 시작'을 누르세요. 관심 종목: {', '.join(sym_to_name.get(s, s) for s in watchlist)}")
     st.stop()
 
 # ── 예측 실행 ────────────────────────────────────────────────────────
