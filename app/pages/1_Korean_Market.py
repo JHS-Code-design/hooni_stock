@@ -36,7 +36,7 @@ def sym_label(sym: str) -> str:
 with st.sidebar:
     st.markdown("---")
     st.subheader("⭐ 관심 종목")
-    tab_my, tab_shared = st.tabs(["👤 개인", "🌐 공유"])
+    tab_shared, tab_my = st.tabs(["🌐 공유", "👤 개인"])
 
     # ── 개인 탭 ──────────────────────────────────────────────────────
     with tab_my:
@@ -116,7 +116,8 @@ with st.sidebar:
                 st.rerun()
 
 # ── 종목 입력 ──────────────────────────────────────────────────────────
-default_input = st.session_state.pop("prefill", "005930, 000660")
+_shared = load_shared()
+default_input = st.session_state.pop("prefill", ", ".join(_shared) if _shared else "005930, 000660")
 
 col1, col2 = st.columns([3, 1])
 with col1:
