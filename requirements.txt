@@ -1,4 +1,4 @@
-FinanceDataReader>=0.9.50
+finance-datareader>=0.9.50
 yfinance>=0.2.38
 requests>=2.31.0
 
