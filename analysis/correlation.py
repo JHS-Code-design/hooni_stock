@@ -19,28 +19,59 @@ def load_listing() -> pd.DataFrame:
     return pd.read_parquet(p)
 
 
-def load_latest_prices(symbols: list[str]) -> pd.DataFrame:
-    """가장 최근 날짜 디렉토리에서 종목 OHLCV 로드 → 종가 DataFrame 반환"""
-    prices_dir = DATA_DIR / "prices"
-    if not prices_dir.exists():
-        return pd.DataFrame()
+def fetch_prices_online(symbols: list[str], days: int = 90) -> pd.DataFrame:
+    """FDR로 실시간 주가 조회 (로컬 데이터 없을 때 fallback)"""
+    import FinanceDataReader as fdr
+    from datetime import datetime, timedelta
+    import time
 
-    dates = sorted([d.name for d in prices_dir.iterdir() if d.is_dir()], reverse=True)
-    if not dates:
-        return pd.DataFrame()
-
-    latest = prices_dir / dates[0]
+    end = datetime.now().strftime("%Y-%m-%d")
+    start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
     frames = {}
-    for sym in symbols:
-        p = latest / f"{sym}.parquet"
-        if p.exists():
-            df = pd.read_parquet(p)
-            col = "Close" if "Close" in df.columns else df.columns[-1]
-            frames[sym] = df[col]
+    for sym in symbols[:30]:  # 최대 30개 제한
+        try:
+            df = fdr.DataReader(sym, start, end)
+            if df is not None and not df.empty:
+                col = "Close" if "Close" in df.columns else df.columns[-1]
+                frames[sym] = df[col]
+            time.sleep(0.3)
+        except Exception:
+            pass
+    return pd.DataFrame(frames) if frames else pd.DataFrame()
+
+
+def load_latest_prices(symbols: list[str]) -> pd.DataFrame:
+    """가장 최근 날짜 디렉토리에서 종목 OHLCV 로드 → 없으면 FDR 실시간 조회"""
+    prices_dir = DATA_DIR / "prices"
+
+    local_syms = []
+    if prices_dir.exists():
+        dates = sorted([d.name for d in prices_dir.iterdir() if d.is_dir()], reverse=True)
+        if dates:
+            latest = prices_dir / dates[0]
+            local_syms = [f.stem for f in latest.glob("*.parquet")]
+
+    # 로컬에 있는 종목
+    frames = {}
+    if local_syms:
+        dates = sorted([d.name for d in prices_dir.iterdir() if d.is_dir()], reverse=True)
+        latest = prices_dir / dates[0]
+        for sym in symbols:
+            if sym in local_syms:
+                p = latest / f"{sym}.parquet"
+                df = pd.read_parquet(p)
+                col = "Close" if "Close" in df.columns else df.columns[-1]
+                frames[sym] = df[col]
+
+    # 로컬에 없는 종목 → 온라인 조회
+    missing = [s for s in symbols if s not in frames]
+    if missing:
+        online = fetch_prices_online(missing)
+        for col in online.columns:
+            frames[col] = online[col]
 
     if not frames:
         return pd.DataFrame()
-
     return pd.DataFrame(frames)
 
 
