@@ -32,7 +32,7 @@ def fetch_us_prices(days: int = 180) -> pd.DataFrame:
         progress=False,
     )
     close = df["Close"] if "Close" in df.columns else df.xs("Close", axis=1, level=0)
-    close.columns = ["SP500", "NASDAQ", "KRW", "VIX"]
+    close = close.rename(columns={"^GSPC": "SP500", "^IXIC": "NASDAQ", "KRW=X": "KRW", "^VIX": "VIX"})
     return close.dropna(how="all")
 
 
