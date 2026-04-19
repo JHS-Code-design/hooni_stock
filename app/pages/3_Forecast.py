@@ -288,6 +288,9 @@ with st.spinner("백테스트 실행 중..."):
         history_days=history_days, forecast_days=forecast_days, n_tests=5,
     )
 
+# DEBUG
+st.caption(f"[DEBUG] bt_load_days={bt_load_days}, full_series len={len(full_series)}, min_len_needed={history_days+forecast_days+1}")
+
 if not bt:
     st.warning("데이터가 부족하여 백테스트를 수행할 수 없습니다. (최소 120일 이상 필요)")
 else:
