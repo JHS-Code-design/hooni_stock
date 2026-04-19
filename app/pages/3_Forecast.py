@@ -128,7 +128,7 @@ fig.add_trace(go.Scatter(
 
 # 현재 시점 구분선
 fig.add_vline(
-    x=series.index[-1], line_dash="dot",
+    x=series.index[-1].strftime("%Y-%m-%d"), line_dash="dot",
     line_color="rgba(255,255,255,0.4)",
     annotation_text="현재", annotation_position="top",
 )
