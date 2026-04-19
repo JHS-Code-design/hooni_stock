@@ -10,8 +10,12 @@ import numpy as np
 import pandas as pd
 from datetime import timedelta
 
-from .forecast import linear_forecast, ma_forecast, fetch_us_basket, compute_beta_rho, _us_adjustment
-from .sector_map import get_basket
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from analysis.forecast import linear_forecast, ma_forecast, fetch_us_basket, compute_beta_rho, _us_adjustment
+from analysis.sector_map import get_basket
 
 
 def _mape(actual: float, predicted: float) -> float:

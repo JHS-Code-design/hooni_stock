@@ -182,7 +182,7 @@ def run_forecast(
           "atr": float,
         }
     """
-    from .sector_map import get_basket
+    from analysis.sector_map import get_basket
 
     series = _load_price_series(symbol, history_days)
     if series.empty or len(series) < 10:
