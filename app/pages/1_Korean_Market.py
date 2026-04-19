@@ -11,8 +11,9 @@ from app.utils.chart_builder import (
     build_network_graph, build_heatmap, build_treemap, build_comparison_chart
 )
 from app.utils.watchlist import (
-    load_shared, save_shared,
-    get_my_watchlist, add_to_my, remove_from_my,
+    load_watchlist, save_watchlist,
+    add_to_watchlist, remove_from_watchlist,
+    load_shared,  # 하위 호환
 )
 
 st.set_page_config(page_title="한국 시장", layout="wide")
@@ -36,84 +37,33 @@ def sym_label(sym: str) -> str:
 with st.sidebar:
     st.markdown("---")
     st.subheader("⭐ 관심 종목")
-    tab_shared, tab_my = st.tabs(["🌐 공유", "👤 개인"])
 
-    # ── 개인 탭 ──────────────────────────────────────────────────────
-    with tab_my:
-        st.caption("세션 내 유지됩니다 (새로고침 시 초기화)")
-        my_list = get_my_watchlist()
+    watchlist = load_watchlist()
 
-        for sym in my_list:
-            c1, c2 = st.columns([4, 1])
-            c1.write(sym_label(sym))
-            if c2.button("✕", key=f"rm_my_{sym}", use_container_width=True):
-                remove_from_my(sym)
+    for sym in watchlist:
+        c1, c2 = st.columns([4, 1])
+        c1.write(sym_label(sym))
+        if c2.button("✕", key=f"rm_{sym}", use_container_width=True):
+            remove_from_watchlist(sym)
+            st.rerun()
+
+    with st.form("add_watch_form", clear_on_submit=True):
+        new_sym = st.text_input("종목코드/종목명 추가",
+                                placeholder="005930 또는 삼성전자")
+        if st.form_submit_button("추가", use_container_width=True):
+            token_input = new_sym.strip()
+            resolved = (name_to_sym.get(token_input) or
+                        (token_input if token_input in sym_to_name else None))
+            if resolved:
+                add_to_watchlist(resolved)
                 st.rerun()
+            else:
+                st.error("인식 불가 종목")
 
-        with st.form("add_my_form", clear_on_submit=True):
-            new_sym = st.text_input("종목코드/종목명 추가", key="my_input",
-                                    placeholder="005930 또는 삼성전자")
-            if st.form_submit_button("추가", use_container_width=True):
-                token = new_sym.strip()
-                resolved = (name_to_sym.get(token) or
-                            (token if token in sym_to_name else None))
-                if resolved:
-                    add_to_my(resolved)
-                    st.rerun()
-                else:
-                    st.error("인식 불가 종목")
-
-        if my_list:
-            if st.button("📋 개인 목록으로 분석", use_container_width=True, key="use_my"):
-                st.session_state["watch_input"] = ", ".join(my_list)
-                st.rerun()
-
-    # ── 공유 탭 ──────────────────────────────────────────────────────
-    with tab_shared:
-        st.caption("모두가 보는 공동 목록 (GitHub 동기화)")
-        shared_list = load_shared()
-
-        for sym in shared_list:
-            c1, c2 = st.columns([4, 1])
-            c1.write(sym_label(sym))
-            if c2.button("✕", key=f"rm_sh_{sym}", use_container_width=True):
-                new_shared = [s for s in shared_list if s != sym]
-                ok = save_shared(new_shared)
-                if ok:
-                    st.success("삭제됨")
-                else:
-                    st.warning("GITHUB_TOKEN 미설정 — 로컬에서만 적용")
-                    # 파일에는 직접 저장 불가 (Cloud ephemeral), session에 임시 보관
-                    st.session_state["shared_override"] = new_shared
-                st.rerun()
-
-        with st.form("add_shared_form", clear_on_submit=True):
-            new_sym = st.text_input("종목코드/종목명 추가", key="shared_input",
-                                    placeholder="064350 또는 현대로템")
-            if st.form_submit_button("추가", use_container_width=True):
-                token = new_sym.strip()
-                resolved = (name_to_sym.get(token) or
-                            (token if token in sym_to_name else None))
-                if resolved and resolved not in shared_list:
-                    new_shared = shared_list + [resolved]
-                    ok = save_shared(new_shared)
-                    if ok:
-                        st.success("추가됨")
-                    else:
-                        st.warning("GITHUB_TOKEN 미설정 — 이 세션에서만 적용")
-                        st.session_state["shared_override"] = new_shared
-                    st.rerun()
-                elif not resolved:
-                    st.error("인식 불가 종목")
-
-        # session override (GITHUB_TOKEN 없을 때 임시)
-        if "shared_override" in st.session_state:
-            shared_list = st.session_state["shared_override"]
-
-        if shared_list:
-            if st.button("📋 공유 목록으로 분석", use_container_width=True, key="use_shared"):
-                st.session_state["watch_input"] = ", ".join(shared_list)
-                st.rerun()
+    if watchlist:
+        if st.button("📋 관심 목록으로 분석", use_container_width=True, key="use_watch"):
+            st.session_state["watch_input"] = ", ".join(watchlist)
+            st.rerun()
 
 # ── 종목 입력 ──────────────────────────────────────────────────────────
 _shared = load_shared()

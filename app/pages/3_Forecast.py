@@ -9,7 +9,7 @@ import pandas as pd
 from analysis.forecast import run_forecast, _load_price_series
 from analysis.backtest import run_backtest
 from app.utils.data_loader import load_krx_listing
-from app.utils.watchlist import load_shared
+from app.utils.watchlist import load_watchlist
 
 st.set_page_config(page_title="주가 예측", layout="wide")
 st.title("📈 주가 예측 (복합)")
@@ -26,15 +26,27 @@ if not listing.empty and "Name" in listing.columns:
         sym_to_sector = dict(zip(listing["Symbol"], listing["Sector"]))
 
 # ── 입력 ─────────────────────────────────────────────────────────────
-shared = load_shared()
+watchlist = load_watchlist()
+
+def _sym_label(s: str) -> str:
+    n = sym_to_name.get(s, "")
+    return f"{n}({s})" if n else s
+
+# 관심 종목 선택 드롭다운 (있을 때만 표시)
+if watchlist:
+    watch_options = ["직접 입력"] + [_sym_label(s) for s in watchlist]
+    selected = st.selectbox("⭐ 관심 종목에서 선택", watch_options, index=0)
+    if selected != "직접 입력":
+        # 괄호 안 코드 추출
+        _pre_fill = selected[selected.rfind("(") + 1:-1] if "(" in selected else selected
+    else:
+        _pre_fill = ""
+else:
+    _pre_fill = ""
 
 col1, col2, col3 = st.columns([3, 2, 2])
 with col1:
-    def _sym_label(s: str) -> str:
-        n = sym_to_name.get(s, "")
-        return f"{n}({s})" if n else s
-
-    default_val = _sym_label(shared[0]) if shared else "064350"
+    default_val = _sym_label(_pre_fill) if _pre_fill else (_sym_label(watchlist[0]) if watchlist else "064350")
     raw = st.text_input(
         "종목코드 또는 종목명",
         value=default_val,
