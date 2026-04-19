@@ -55,15 +55,17 @@ if not run_btn:
     st.stop()
 
 # ── 예측 실행 ────────────────────────────────────────────────────────
-try:
-    with st.spinner("데이터 로딩 및 예측 중..."):
+with st.spinner("데이터 로딩 및 예측 중..."):
+    try:
         result = run_forecast(symbol, history_days=history_days,
                               forecast_days=forecast_days, sector=sector)
-except Exception as _e:
-    import traceback as _tb
-    st.error(f"[DEBUG] {type(_e).__name__}: {_e}")
-    st.code(_tb.format_exc())
-    st.stop()
+    except TypeError:
+        # Streamlit Cloud 캐시가 구버전 run_forecast를 로드한 경우 fallback
+        import importlib, analysis.forecast as _fm
+        importlib.reload(_fm)
+        from analysis.forecast import run_forecast as _rf2
+        result = _rf2(symbol, history_days=history_days,
+                      forecast_days=forecast_days, sector=sector)
 
 if not result:
     st.error("데이터를 불러올 수 없습니다. 종목코드를 확인하세요.")

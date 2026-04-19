@@ -1,9 +1,11 @@
 """
-주가 예측 엔진 (복합)
+주가 예측 엔진 (복합) v2
 - 선형 회귀 추세 + 이동평균 기반 예측
 - 미국 섹터 ETF/대표주 연동 (베타·상관계수)
 - ATR14 신뢰 구간
+- sector 파라미터 지원
 """
+_VERSION = "2.0"
 import numpy as np
 import pandas as pd
 from scipy import stats
