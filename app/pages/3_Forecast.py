@@ -299,10 +299,19 @@ with st.spinner("백테스트 실행 중..."):
                 full_series = _h["Close"].dropna()
                 break
 
-    bt = run_backtest(
-        full_series, sector=sector,
-        history_days=history_days, forecast_days=forecast_days, n_tests=5,
-    )
+    # timezone 정규화 (yfinance UTC-aware → tz-naive)
+    if getattr(full_series.index, "tz", None) is not None:
+        full_series = full_series.copy()
+        full_series.index = full_series.index.tz_convert(None)
+
+    try:
+        bt = run_backtest(
+            full_series, sector=sector,
+            history_days=history_days, forecast_days=forecast_days, n_tests=5,
+        )
+    except Exception as _bt_err:
+        bt = {}
+        st.caption(f"[DEBUG-BT] {type(_bt_err).__name__}: {_bt_err}")
 
 if not bt:
     st.warning("데이터가 부족하여 백테스트를 수행할 수 없습니다. (최소 120일 이상 필요)")
