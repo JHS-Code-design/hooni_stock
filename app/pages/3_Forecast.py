@@ -30,10 +30,15 @@ shared = load_shared()
 
 col1, col2, col3 = st.columns([3, 2, 2])
 with col1:
+    def _sym_label(s: str) -> str:
+        n = sym_to_name.get(s, "")
+        return f"{n}({s})" if n else s
+
+    default_val = _sym_label(shared[0]) if shared else "064350"
     raw = st.text_input(
         "종목코드 또는 종목명",
-        value=shared[0] if shared else "064350",
-        placeholder="064350 또는 현대로템",
+        value=default_val,
+        placeholder="064350 또는 현대로템(064350)",
     )
 with col2:
     history_days = st.selectbox("과거 데이터 기간", [30, 60, 90, 180], index=2,
@@ -43,6 +48,9 @@ with col3:
                                  format_func=lambda x: f"{x}일")
 
 token = raw.strip()
+# "현대로템(064350)" 형식 파싱
+if "(" in token and token.endswith(")"):
+    token = token[token.rfind("(") + 1:-1].strip()
 symbol = name_to_sym.get(token) or (token if token in sym_to_name else token)
 _s = sym_to_sector.get(symbol, "")
 sector = _s if isinstance(_s, str) and _s else ""  # NaN 방어
@@ -235,14 +243,15 @@ st.plotly_chart(fig, use_container_width=True)
 
 # ── 예측값 테이블 ─────────────────────────────────────────────────────
 with st.expander("예측 수치 상세"):
+    ratio = target_c / target if target != 0 else 1
     tbl = pd.DataFrame({
         "날짜": linear["forecast"].index.strftime("%Y-%m-%d"),
-        "선형 예측(원)": linear["forecast"].values.round(0).astype(int),
-        "복합 예측(원)": (linear["forecast"] * (target_c / target if target != 0 else 1)).values.round(0).astype(int),
-        "상단 95%(원)": linear["upper"].values.round(0).astype(int),
-        "하단 95%(원)": linear["lower"].values.round(0).astype(int),
-        "MA20 예측(원)": ma20.values.round(0).astype(int),
-        "MA60 예측(원)": ma60.values.round(0).astype(int),
+        "선형 예측(원)":  [f"{v:,}" for v in linear["forecast"].values.round(0).astype(int)],
+        "복합 예측(원)":  [f"{v:,}" for v in (linear["forecast"] * ratio).values.round(0).astype(int)],
+        "상단 95%(원)":   [f"{v:,}" for v in linear["upper"].values.round(0).astype(int)],
+        "하단 95%(원)":   [f"{v:,}" for v in linear["lower"].values.round(0).astype(int)],
+        "MA20 예측(원)":  [f"{v:,}" for v in ma20.values.round(0).astype(int)],
+        "MA60 예측(원)":  [f"{v:,}" for v in ma60.values.round(0).astype(int)],
     })
     st.dataframe(tbl.set_index("날짜"), use_container_width=True)
 
